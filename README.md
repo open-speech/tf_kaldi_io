@@ -40,7 +40,7 @@ with tf.Session() as sess:
 
     next_element = iterator.get_next()
     # next_element: 
-    #		in utt mode: (utt_keys, inputs, input_lengths, [targets, target_lengths])
+    #	in utt mode: (utt_keys, inputs, input_lengths, [targets, target_lengths])
     #   in frame mode: (inputs, [targets])
 
     iterator_init_op = iterator.make_initializer(kaldi_dataset.dataset)
