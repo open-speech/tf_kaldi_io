@@ -92,5 +92,5 @@ python test_tf_kaldi_io.py # test custom dataset: KaldiReaderDataset
     - no transformations support - you need prepare many feature varieties for one task.
     - no way to become tensorflow native io(dataset) - no parallel, prefetch, shuffle, bucket, ...
     - depend on TFRecodes(protobuf) - unnecessary(need convert to it then to tensor), and protobuf is a nightmare(version incompatible) everytime we meet.
-    - all of above disappointments make tf_kaldi_io appears. May kaldi user happy to enter tensorflow world.
+    - all of above disappointments make tf_kaldi_io appear. May kaldi user happy to enter tensorflow world.
     
