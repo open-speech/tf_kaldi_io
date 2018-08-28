@@ -83,6 +83,7 @@ python test_tf_kaldi_io.py # test custom dataset: KaldiReaderDataset
 ```
 
 ## More
+- inputs is kaldi feature storage format, target is kaldi alignments format(int-vector).
 - Only `input_rspecifier` is required argument, others are optional or have default values(see in `tf_kaldi_io.py`).
 - If use num_downsample in `utt` mode: just the inputs get sampling, the target will not. It's sensible for sequence traing(CTC).
 - There are many tf kaldi io implementions, but with one or more defects:
