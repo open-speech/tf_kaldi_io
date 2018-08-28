@@ -1,0 +1,5 @@
+include README.md
+include ops/*.cmake
+include ops/*.cc
+include CMakeLists.txt
+exclude test/*.py
