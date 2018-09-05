@@ -87,12 +87,12 @@ python test_tf_kaldi_io.py # test custom dataset: KaldiReaderDataset
 - Only `input_rspecifier` is required argument, others are optional or have default values(see in `tf_kaldi_io.py`).
 - If use num_downsample in `utt` mode: just the inputs get sampling, the target will not. It's sensible for sequence traing(CTC).
 - There are many tf kaldi io implementions, but with one or more defects:
-    - just python - io itself is slow.
-    - sequential with training - have to wait io done.
-    - just kaldi ark in text or binary - text is big, binary is unreadable.
-    - no transformations support - you need prepare many feature varieties for one task.
-    - no way to become tensorflow native io(dataset) - no parallel, prefetch, shuffle, bucket, ...
-    - depend on TFRecodes(protobuf) - unnecessary(need convert to it then to tensor), and protobuf is a nightmare(version incompatible) everytime we meet.
+    - just python - _io itself is slow_.
+    - sequential with training - _have to wait io done_.
+    - just kaldi ark in text or binary - _text is big, binary is unreadable_.
+    - no transformations support - _you need prepare many feature varieties for one task_.
+    - no way to become tensorflow native io(dataset) - _no parallel, prefetch, shuffle, bucket, ..._
+    - depend on TFRecodes(protobuf) - _unnecessary(need convert to it then to tensor), and protobuf is a nightmare(version incompatible) everytime we meet._
     - all of above disappointments make tf_kaldi_io appear.
     
 ## Todo:
