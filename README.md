@@ -95,3 +95,6 @@ python test_tf_kaldi_io.py # test custom dataset: KaldiReaderDataset
     - depend on TFRecodes(protobuf) - unnecessary(need convert to it then to tensor), and protobuf is a nightmare(version incompatible) everytime we meet.
     - all of above disappointments make tf_kaldi_io appear.
     
+## Todo:
+- [ ] support `TFRecord` files as output
+- [ ] examples of making use of tf_kaldi_io to train a TF model. Will be in another repo.
