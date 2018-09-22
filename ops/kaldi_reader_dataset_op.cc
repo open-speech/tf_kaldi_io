@@ -26,6 +26,15 @@ Status Matrix2Tensor(const kaldi::MatrixBase<kaldi::BaseFloat> &in, Tensor &out)
   return Status::OK();
 }
 
+Status Vector2Tensor(const kaldi::VectorBase<kaldi::BaseFloat> &in, Tensor &out) {
+  auto flat = out.flat<float>();
+  assert(flat.size() == in.Dim());
+  float *to = flat.data();
+  std::copy_n(in.Data(), in.Dim(), to);
+
+  return Status::OK();
+}
+
 Status vector2Tensor(std::vector<int> &in, Tensor &out) {
   auto flat = out.flat<int>();
   assert(flat.size() == in.size());
@@ -52,18 +61,23 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
 
     // Create the dataset object, passing any (already-validated) arguments from
     // attrs or input tensors.
-    const Tensor *input_rspecifier_tensor, *target_rspecifier_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("input_rspecifier", &input_rspecifier_tensor));
+    const Tensor *matrix_rspecifier_tensor, *vector_rspecifier_tensor, *int_vector_rspecifier_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("matrix_rspecifier", &matrix_rspecifier_tensor));
     OP_REQUIRES(
-        ctx, input_rspecifier_tensor->dims() == 0,
-        errors::InvalidArgument("`input filename` must be a scalar of string."));
-    OP_REQUIRES_OK(ctx, ctx->input("target_rspecifier", &target_rspecifier_tensor));
+        ctx, matrix_rspecifier_tensor->dims() == 0,
+        errors::InvalidArgument("`matrix filename` must be a scalar of string."));
+    OP_REQUIRES_OK(ctx, ctx->input("vector_rspecifier", &vector_rspecifier_tensor));
     OP_REQUIRES(
-        ctx, target_rspecifier_tensor->dims() == 0,
-        errors::InvalidArgument("`target filename` must be a scalar of string."));
+        ctx, vector_rspecifier_tensor->dims() == 0,
+        errors::InvalidArgument("`vector filename` must be a scalar of string."));
+    OP_REQUIRES_OK(ctx, ctx->input("int_vector_rspecifier", &int_vector_rspecifier_tensor));
+    OP_REQUIRES(
+        ctx, int_vector_rspecifier_tensor->dims() == 0,
+        errors::InvalidArgument("`int-vector filename` must be a scalar of string."));
 
-    string input_rspecifier(input_rspecifier_tensor->flat<string>()(0));
-    string target_rspecifier(target_rspecifier_tensor->flat<string>()(0));
+    string matrix_rspecifier(matrix_rspecifier_tensor->flat<string>()(0));
+    string vector_rspecifier(vector_rspecifier_tensor->flat<string>()(0));
+    string int_vector_rspecifier(int_vector_rspecifier_tensor->flat<string>()(0));
 
     int64 buffer_size = -1;
     OP_REQUIRES_OK(
@@ -110,7 +124,8 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
                 errors::InvalidArgument("offset must be >= 0 not ", offset));
 
     *output =
-        new Dataset(ctx, input_rspecifier, target_rspecifier, buffer_size,
+        new Dataset(ctx, matrix_rspecifier, vector_rspecifier, int_vector_rspecifier,
+                    buffer_size,
                     delta_order,
                     norm_means, norm_vars, global_cmvn_file,
                     left_context, right_context,
@@ -122,8 +137,9 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
   class Dataset : public GraphDatasetBase {
    public:
     Dataset(OpKernelContext *ctx,
-            const string &input_rspecifier,
-            const string &target_rspecifier,
+            const string &matrix_rspecifier,
+            const string &vector_rspecifier,
+            const string &int_vector_rspecifier,
             int64 buffer_size,
             int64 delta_order,
             bool norm_means,
@@ -137,8 +153,9 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
     )
         :
         GraphDatasetBase(ctx),
-        input_rspecifier_(input_rspecifier),
-        target_rspecifier_(target_rspecifier),
+        matrix_rspecifier_(matrix_rspecifier),
+        vector_rspecifier_(vector_rspecifier),
+        int_vector_rspecifier_(int_vector_rspecifier),
         delta_opts_(delta_order),
         norm_means_(norm_means), norm_vars_(norm_vars),
         left_context_(left_context), right_context_(right_context),
@@ -164,24 +181,48 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
     // types and shapes; replace the following two methods to customize this
     // aspect of the dataset.
     const DataTypeVector &output_dtypes() const override {
-      if (target_rspecifier_.empty()) {
+      bool with_matrix = !matrix_rspecifier_.empty(),
+           with_vector = !vector_rspecifier_.empty(),
+           with_int_vec = !int_vector_rspecifier_.empty();
+
+      if (!with_matrix && !with_vector && with_int_vec) {
+        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_INT32}); // utt, int_vec
+        return *dtypes;
+      } else if ((!with_matrix && with_vector && !with_int_vec) ||
+                 (with_matrix && !with_vector && !with_int_vec)) {
         static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT});
         return *dtypes;
-      } else {
+      } else if ((!with_matrix && with_vector && with_int_vec) ||
+                 (with_matrix && !with_vector && with_int_vec)) {
         static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_INT32});
+        return *dtypes;
+      } else if (with_matrix && with_vector && !with_int_vec) {
+        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT});
+        return *dtypes;
+      } else if (with_matrix && with_vector && with_int_vec) {
+        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT, DT_INT32});
         return *dtypes;
       }
     }
+
     const std::vector<PartialTensorShape> &output_shapes() const override {
-      if (target_rspecifier_.empty()) {
-        static std::vector <PartialTensorShape> *shapes =
-            new std::vector<PartialTensorShape>({{}, {}});
-        return *shapes;
-      } else {
-        static std::vector <PartialTensorShape> *shapes =
-            new std::vector<PartialTensorShape>({{}, {}, {}});
-        return *shapes;
+      int num_out_shapes = 0;
+      if (!matrix_rspecifier_.empty())
+        ++num_out_shapes;
+      if (!vector_rspecifier_.empty())
+        ++num_out_shapes;
+      if (!int_vector_rspecifier_.empty())
+        ++num_out_shapes;
+
+      static std::vector<PartialTensorShape> *shapes;
+      if (num_out_shapes == 1) {
+        shapes = new std::vector<PartialTensorShape>({{}});
+      } else if (num_out_shapes == 2 ){
+        shapes = new std::vector<PartialTensorShape>({{}, {}});
+      } else if (num_out_shapes == 3) {
+        shapes = new std::vector<PartialTensorShape>({{}, {}, {}});
       }
+      return *shapes;
     }
 
     string DebugString() const override { return "KaldiReaderDatasetOp::Dataset"; }
@@ -195,9 +236,10 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
                               Node **output) const override {
       // Construct nodes to represent any of the input tensors from this
       // object's member variables using `b->AddScalar()` and `b->AddVector()`.
-      Node *input_rspecifier = nullptr, *target_rspecifier = nullptr;
-      TF_RETURN_IF_ERROR(b->AddScalar(input_rspecifier_, &input_rspecifier));
-      TF_RETURN_IF_ERROR(b->AddScalar(target_rspecifier_, &target_rspecifier));
+      Node *matrix_rspecifier = nullptr, *vector_rspecifier = nullptr, *int_vector_rspecifier = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(matrix_rspecifier_, &matrix_rspecifier));
+      TF_RETURN_IF_ERROR(b->AddScalar(vector_rspecifier_, &vector_rspecifier));
+      TF_RETURN_IF_ERROR(b->AddScalar(int_vector_rspecifier_, &int_vector_rspecifier));
       Node *buffer_size = nullptr;
 //      TF_RETURN_IF_ERROR(b->AddScalar(options_.buffer_size, &buffer_size));
 
@@ -230,7 +272,8 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
 
       TF_RETURN_IF_ERROR(
           b->AddDataset(this,
-                        {input_rspecifier, target_rspecifier, buffer_size,
+                        {matrix_rspecifier, vector_rspecifier, int_vector_rspecifier,
+                         buffer_size,
                          delta_order,
                          norm_means, norm_vars, global_cmvn_file,
                          left_context, right_context,
@@ -340,13 +383,25 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
      public:
       explicit Iterator(const Params &params)
           : DatasetIterator<Dataset>(params) {
-        feat_reader_.reset(
-            new kaldi::SequentialBaseFloatMatrixReader(dataset()->input_rspecifier_));
-        if (!dataset()->target_rspecifier_.empty()) {
-          label_reader_.reset(
-              new kaldi::SequentialInt32VectorReader(dataset()->target_rspecifier_));
+        if (!dataset()->matrix_rspecifier_.empty()) {
+          matrix_reader_.reset(
+              new kaldi::SequentialBaseFloatMatrixReader(dataset()->matrix_rspecifier_));
         } else {
-          label_reader_.reset(nullptr);
+          matrix_reader_.reset(nullptr);
+        }
+
+        if (!dataset()->vector_rspecifier_.empty()) {
+          vector_reader_.reset(
+              new kaldi::SequentialBaseFloatVectorReader(dataset()->vector_rspecifier_));
+        } else {
+          vector_reader_.reset(nullptr);
+        }
+
+        if (!dataset()->int_vector_rspecifier_.empty()) {
+          int_vec_reader_.reset(
+              new kaldi::SequentialInt32VectorReader(dataset()->int_vector_rspecifier_));
+        } else {
+          int_vec_reader_.reset(nullptr);
         }
       }
 
@@ -369,14 +424,34 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
         // recommended that you protect the iterator state with a mutex.
         mutex_lock l(mu_);
         do {
-          if (feat_reader_->Done()) { // End of file, advance to the next.
+          if ((matrix_reader_ && matrix_reader_->Done()) ||
+              (vector_reader_ and vector_reader_->Done()) ||
+              (int_vec_reader_ and int_vec_reader_->Done())) { // End of any reader, advance to the next.
             *end_of_sequence = true;
             return Status::OK();
           } else {
-            const string key = feat_reader_->Key();
+            string key;
+            bool seen_reader = false;
 
-            { // input
-              kaldi::Matrix <kaldi::BaseFloat> feat_mat(feat_reader_->Value());
+            if(matrix_reader_) { // matrix
+              if (key.empty())
+                key = matrix_reader_->Key();
+              else {
+                if (key != matrix_reader_->Key())
+                  return errors::InvalidArgument(
+                      "pre_reader_key:", key,
+                      " is not matched with current_reader_key:", matrix_reader_->Key(),
+                      ", something must be wrong(input changed?).");
+              }
+
+              if (!seen_reader) {
+                Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
+                key_tensor.scalar<string>()() = key;
+                out_tensors->emplace_back(std::move(key_tensor));
+                seen_reader =true;
+              }
+
+              kaldi::Matrix <kaldi::BaseFloat> feat_mat(matrix_reader_->Value());
 
               kaldi::Matrix <kaldi::BaseFloat> feat_preprocessed_mat;
               Status s = dataset()->Preprocess(feat_mat, feat_preprocessed_mat);
@@ -384,32 +459,72 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
                 return s;
               }
 
-              Tensor input_tensor
+              Tensor matrix_tensor
                   (ctx->allocator({}),
                    DT_FLOAT,
                    {feat_preprocessed_mat.NumRows(), feat_preprocessed_mat.NumCols()});
 
-              s = Matrix2Tensor(feat_preprocessed_mat, input_tensor);
+              s = Matrix2Tensor(feat_preprocessed_mat, matrix_tensor);
               if (!s.ok()) {
                 return s;
               }
 
-              Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
-              key_tensor.scalar<string>()() = key;
-              out_tensors->emplace_back(std::move(key_tensor));
-              out_tensors->emplace_back(std::move(input_tensor));
+              out_tensors->emplace_back(std::move(matrix_tensor));
 
-              feat_reader_->Next();
+              matrix_reader_->Next();
             }
 
-            if (!dataset()->target_rspecifier_.empty()) { // target
-              if (key != label_reader_->Key()) {
-                return errors::InvalidArgument(
-                    "current_key_index_:", current_key_index_,
-                    " is not matched with current_key:", current_key_,
-                    ", something must be wrong(input changed?).");
+            if(vector_reader_) { // vector
+              if (key.empty())
+                key = vector_reader_->Key();
+              else {
+                if (key != vector_reader_->Key())
+                  return errors::InvalidArgument(
+                      "pre_reader_key:", key,
+                      " is not matched with current_reader_key:", vector_reader_->Key(),
+                      ", something must be wrong(input changed?).");
               }
-              std::vector <kaldi::int32> label_vec(label_reader_->Value());
+
+              if (!seen_reader) {
+                Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
+                key_tensor.scalar<string>()() = key;
+                out_tensors->emplace_back(std::move(key_tensor));
+                seen_reader =true;
+              }
+
+              kaldi::Vector <kaldi::BaseFloat> feat_vec(vector_reader_->Value());
+
+              Tensor vec_tensor(ctx->allocator({}), DT_FLOAT, {feat_vec.Dim()});
+
+              Status s = Vector2Tensor(feat_vec, vec_tensor);
+              if (!s.ok()) {
+                return s;
+              }
+
+              out_tensors->emplace_back(std::move(vec_tensor));
+
+              vector_reader_->Next();
+            }
+
+            if (int_vec_reader_) { // int_vec
+              if (key.empty())
+                key = int_vec_reader_->Key();
+              else {
+                if (key != int_vec_reader_->Key())
+                  return errors::InvalidArgument(
+                      "pre_reader_key:", key,
+                      " is not matched with current_reader_key:", int_vec_reader_->Key(),
+                      ", something must be wrong(input changed?).");
+              }
+
+              if (!seen_reader) {
+                Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
+                key_tensor.scalar<string>()() = key;
+                out_tensors->emplace_back(std::move(key_tensor));
+                seen_reader =true;
+              }
+
+              std::vector <kaldi::int32> label_vec(int_vec_reader_->Value());
 
               if (dataset()->num_downsample_ != 1 && dataset()->mode_ == "frame") {
                 dataset()->DownsampleTargets(label_vec);
@@ -423,7 +538,7 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
 
               out_tensors->emplace_back(std::move(output_tensor));
 
-              label_reader_->Next();
+              int_vec_reader_->Next();
             }
 
             // We have reached the end of the current key, so maybe
@@ -475,12 +590,15 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
       // Sets up reader streams to read from the file at `current_key_index_`.
       Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         for (size_t i = 0; i <= current_key_index_; ++i) {
-          feat_reader_->Next();
-          if (label_reader_)
-            label_reader_->Next();
+          if (matrix_reader_)
+            matrix_reader_->Next();
+          if (vector_reader_)
+            vector_reader_->Next();
+          if (int_vec_reader_)
+            int_vec_reader_->Next();
         }
 
-        if (current_key_ != feat_reader_->Key()) {
+        if (current_key_ != matrix_reader_->Key()) {
           return  errors::InvalidArgument(
               "current_key_index_:", current_key_index_,
               " is not matched with current_key:", current_key_,
@@ -491,20 +609,23 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
       }
 
       void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        feat_reader_.reset();
-        label_reader_.reset();
+        matrix_reader_.reset();
+        vector_reader_.reset();
+        int_vec_reader_.reset();
       }
 
       mutex mu_;
       size_t current_key_index_ GUARDED_BY(mu_) = 0;
       string current_key_ GUARDED_BY(mu_) = "";
 
-      std::unique_ptr<kaldi::SequentialBaseFloatMatrixReader> feat_reader_ GUARDED_BY(mu_);
-      std::unique_ptr<kaldi::SequentialInt32VectorReader> label_reader_ GUARDED_BY(mu_);
+      std::unique_ptr<kaldi::SequentialBaseFloatMatrixReader> matrix_reader_ GUARDED_BY(mu_);
+      std::unique_ptr<kaldi::SequentialBaseFloatVectorReader> vector_reader_ GUARDED_BY(mu_);
+      std::unique_ptr<kaldi::SequentialInt32VectorReader> int_vec_reader_ GUARDED_BY(mu_);
     };
 
-    const string input_rspecifier_;
-    const string target_rspecifier_;
+    const string matrix_rspecifier_;
+    const string vector_rspecifier_;
+    const string int_vector_rspecifier_;
     const string mode_;
 
     // preprocessing
@@ -530,8 +651,9 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
 //
 // Add any attrs and input tensors that define the dataset here.
 REGISTER_OP("KaldiReaderDataset")
-    .Input("input_rspecifier: string")
-    .Input("target_rspecifier: string")
+    .Input("matrix_rspecifier: string")
+    .Input("vector_rspecifier: string")
+    .Input("int_vector_rspecifier: string")
     .Input("buffer_size: int64")
     .Input("delta_order: int64")
     .Input("norm_means: bool")
@@ -547,30 +669,32 @@ REGISTER_OP("KaldiReaderDataset")
         // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // `input_rspecifier` must be a scalar.
+      // `matrix_rspecifier` must be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      // `target_rspecifier` must be a scalar.
+      // `vector_rspecifier` must be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      // `buffer_size` could only be a scalar.
+      // `int_vector_rspecifier` must be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      // `delta_order` could only be a scalar.
+      // `buffer_size` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      // `norm_means` could only be a scalar.
+      // `delta_order` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      // `norm_vars` could only be a scalar.
+      // `norm_means` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-      // `global_cmvn_file` could only be a scalar.
+      // `norm_vars` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
-      // `left_context` could only be a scalar.
+      // `global_cmvn_file` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      // `right_context` could only be a scalar.
+      // `left_context` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      // `num_downsample` could only be a scalar.
+      // `right_context` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(9), 0, &unused));
-      // `offset` could only be a scalar.
+      // `num_downsample` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(10), 0, &unused));
-      // `mode` could only be a scalar.
+      // `offset` could only be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(11), 0, &unused));
+      // `mode` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(12), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
