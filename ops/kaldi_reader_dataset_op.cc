@@ -206,7 +206,7 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
     }
 
     const std::vector<PartialTensorShape> &output_shapes() const override {
-      int num_out_shapes = 0;
+      int num_out_shapes = 1;
       if (!matrix_rspecifier_.empty())
         ++num_out_shapes;
       if (!vector_rspecifier_.empty())
@@ -215,12 +215,12 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
         ++num_out_shapes;
 
       static std::vector<PartialTensorShape> *shapes;
-      if (num_out_shapes == 1) {
-        shapes = new std::vector<PartialTensorShape>({{}});
-      } else if (num_out_shapes == 2 ){
+      if (num_out_shapes == 2) {
         shapes = new std::vector<PartialTensorShape>({{}, {}});
-      } else if (num_out_shapes == 3) {
+      } else if (num_out_shapes == 3 ){
         shapes = new std::vector<PartialTensorShape>({{}, {}, {}});
+      } else if (num_out_shapes == 4) {
+        shapes = new std::vector<PartialTensorShape>({{}, {}, {}, {}});
       }
       return *shapes;
     }
