@@ -25,13 +25,14 @@ import tensorflow as tf
 from tf_kaldi_io import KaldiDataset
 
 with tf.Session() as sess:
-    kaldi_dataset = KaldiDataset(input_rspecifier="ark:test/data/feats.ark",
-                                 target_rspecifier="ark:test/data/labels.ark",
-                                 batch_size=2, batch_mode="utt", # batch_mode="frame",
-                                 # delta_order=2,
-                                 # norm_means=True, norm_vars=True, global_cmvn_file="test/data/global.cmvn"
-                                 # left_context=1, right_context=1,
-                                 # num_downsample=2, offset=0,
+    kaldi_dataset = KaldiDataset(matrix_rspecifier=matrix.ark,
+                                 vector_rspecifier=vector.ark, 
+                                 int_vec_rspecifier=int_vec.ark,
+                                 batch_size=1, batch_mode="utt", # batch_mode="frame",
+                                 # delta_order=0,
+                                 # norm_means=False, norm_vars=False, global_cmvn_file="test/data/global.cmvn"
+                                 # left_context=0, right_context=0,
+                                 # num_downsample=1, offset=0,
                                  )
 
     iterator = tf.data.Iterator.from_structure(

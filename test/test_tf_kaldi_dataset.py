@@ -4,9 +4,10 @@ from tf_kaldi_io import KaldiDataset
 if __name__ == "__main__":
   # Create a KaldiDataset and print its elements.
   with tf.Session() as sess:
-    kaldi_dataset = KaldiDataset(input_rspecifier="ark:data/feats.ark",
-                                 target_rspecifier="ark:data/labels.ark",
-                                 batch_size=2, batch_mode="frame", # batch_mode="utt",
+    kaldi_dataset = KaldiDataset(#matrix_rspecifier="ark:data/matrix.ark",
+                                 vector_rspecifier="ark:data/vector.ark",
+                                 #int_vector_rspecifier="ark:data/int_vec.ark",
+                                 batch_size=1, batch_mode="utt", # batch_mode="utt",
                                  # delta_order=2,
                                  # norm_means=True, norm_vars=True, global_cmvn_file="data/global.cmvn"
                                  # left_context=1, right_context=1,
