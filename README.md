@@ -20,41 +20,80 @@ Through [tensorflow dataset](https://www.tensorflow.org/guide/datasets), it is a
 
 ## usage
 
-```python
-import tensorflow as tf
-from tf_kaldi_io import KaldiDataset
+There are two python readers:
+- KaldiReaderDataset: a python warpper of tf_kaldi_io, read at utterence level, a custom tf dataset
+    - be able to read matrix(kaldi feat), int-vector(kaldi label), vector(kaldi vector, ivector e.g.)
+    - these matrix/vector/int_vector readers are optional, use what you need
+    - other optional arguments (their default values don't change anything) are for kaldi transformation:
+        - delta
+        - cmvn
+        - sampling
+    ```python
+    import tensorflow as tf
+    from tf_kaldi_io import KaldiReaderDataset
+    
+    # Create a KaldiReaderDataset and print its elements.
+    with tf.Session() as sess:
+        kaldi_dataset = KaldiReaderDataset(matrix_rspecifier="ark:matrix.ark",
+                                           vector_rspecifier="ark:vector.ark",
+                                           int_vector_rspecifier="ark:int_vec.ark",
+                                           # delta_order=0,
+                                           # norm_means=False, norm_vars=False, global_cmvn_file="test/data/global.cmvn"
+                                           # left_context=0, right_context=0,
+                                           # num_downsample=1, offset=0,
+                                           )
+                                           
+        iterator = kaldi_dataset.make_one_shot_iterator()
+        next_element = iterator.get_next()
+        
+        try:
+          while True:
+            print(sess.run(next_element))
+        except tf.errors.OutOfRangeError:
+          pass
+    ```
+    - If you are familiar with tf dataset api, use `KaldiReaderDataset` is enough, otherwise `KaldiDataset` give a dataset warpper with common tf dataset api.
 
-with tf.Session() as sess:
-    kaldi_dataset = KaldiDataset(matrix_rspecifier=matrix.ark,
-                                 vector_rspecifier=vector.ark, 
-                                 int_vec_rspecifier=int_vec.ark,
-                                 batch_size=1, batch_mode="utt", # batch_mode="frame",
-                                 # delta_order=0,
-                                 # norm_means=False, norm_vars=False, global_cmvn_file="test/data/global.cmvn"
-                                 # left_context=0, right_context=0,
-                                 # num_downsample=1, offset=0,
-                                 )
-
-    iterator = tf.data.Iterator.from_structure(
-      kaldi_dataset.dataset.output_types,
-      kaldi_dataset.dataset.output_shapes)
-
-    next_element = iterator.get_next()
-    # next_element: 
-    #	in utt mode: (utt_keys, inputs, input_lengths, [targets, target_lengths])
-    #   in frame mode: (inputs, [targets])
-
-    iterator_init_op = iterator.make_initializer(kaldi_dataset.dataset)
-
-    sess.run(iterator_init_op)
-
-    try:
-      while True:
-        print(sess.run(next_element))
-    except tf.errors.OutOfRangeError:
-      pass
-
-```
+- KaldiDataset: a python warpper of `kaldiReaderDataset`, read at frame or utt level. Based on tf dataset api, it's able to:
+    - shuffle
+    - batch
+    - dynamic pad
+    - bucket with length
+    - ...
+    ```python
+    import tensorflow as tf
+    from tf_kaldi_io import KaldiDataset
+    
+    with tf.Session() as sess:
+        kaldi_dataset = KaldiDataset(matrix_rspecifier="ark:matrix.ark",
+                                     vector_rspecifier="ark:vector.ark", 
+                                     int_vec_rspecifier="ark:int_vec.ark",
+                                     batch_size=1, batch_mode="utt", # batch_mode="frame",
+                                     # delta_order=0,
+                                     # norm_means=False, norm_vars=False, global_cmvn_file="test/data/global.cmvn"
+                                     # left_context=0, right_context=0,
+                                     # num_downsample=1, offset=0,
+                                     )
+    
+        iterator = tf.data.Iterator.from_structure(
+          kaldi_dataset.dataset.output_types,
+          kaldi_dataset.dataset.output_shapes)
+    
+        next_element = iterator.get_next()
+        # next_element: 
+        #	in utt mode: (utt_keys, inputs, input_lengths, [targets, target_lengths])
+        #   in frame mode: (inputs, [targets])
+    
+        iterator_init_op = iterator.make_initializer(kaldi_dataset.dataset)
+    
+        sess.run(iterator_init_op)
+    
+        try:
+          while True:
+            print(sess.run(next_element))
+        except tf.errors.OutOfRangeError:
+          pass
+    ```
 
 ## Install
 
