@@ -68,7 +68,7 @@ with open(README_PATH, "r") as handle:
 
 setup(
   name="tf_kaldi_io",
-  version="0.2.0",
+  version="0.3.0",
   packages=['tf_kaldi_io'],
   ext_modules=[CMakeExtension('tf_kaldi_io')],
   description="kaldi-io for Tensorflow",
