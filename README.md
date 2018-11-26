@@ -99,20 +99,26 @@ There are two python readers:
 
 ### 1. requirements
 - tensorflow >= 1.4
-- kaldi-io lib [requments](https://github.com/open-speech/kaldi-io.git)
-  - kaldi-io lib is compiled automatically in `pip install`, it requires blas math lib installed already.
-    - recommendation: use conda python env, and `conda install mkl`
-    - ubuntu: `sudo apt-get install libatlas3-base`
+- a blas math lib
+  - recommended: MKL
+    - install [conda](https://www.anaconda.com/download/) (mkl is installed with conda by default, 
+    or you can install it by `conda install mkl`)
 
 ### 2. install
-```bash
-# install from pypi
-pip install tf_kaldi_io # it may take a minute, as it compiles kaldi-io lib
-# or install from local, then you can run test*.py in test dir
-git clone https://github.com/open-speech/tf_kaldi_io.git
-cd tf_kaldi_io
-pip install .
-```
+- install locally
+    ```bash
+    git clone https://github.com/open-speech/tf_kaldi_io.git
+    cd tf_kaldi_io
+    
+    # checkout needed branch, master is with the lastest tf api (current: r1.12)
+    git checkout -b [the_branch_as_your_tf_version] origin/[the_branch_as_your_tf_version]
+    
+    pip install .
+    ```
+- or install from pypi (which is the master branch)
+    ```bash
+    pip install tf_kaldi_io
+    ```
 
 ### 3. test
 
