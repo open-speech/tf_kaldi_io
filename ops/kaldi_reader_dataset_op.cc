@@ -10,6 +10,7 @@
 #include "kaldi-io.h"
 
 namespace KaldiIO {
+namespace data {
 namespace {
 
 using namespace tensorflow;
@@ -47,15 +48,11 @@ Status vector2Tensor(std::vector<int> &in, Tensor &out) {
 class KaldiReaderDatasetOp : public DatasetOpKernel {
  public:
 
-  KaldiReaderDatasetOp(OpKernelConstruction *ctx)
-      : DatasetOpKernel(ctx) {
-    // Parse and validate any attrs that define the dataset using
-    // `ctx->GetAttr()`, and store them in member variables.
-  }
+  using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext *ctx,
                    DatasetBase **output) override {
-    // Parse and validate any input tensors 0that define the dataset using
+    // Parse and validate any input tensors that define the dataset using
     // `ctx->input()` or the utility function
     // `ParseScalarArgument<T>(ctx, &arg)`.
 
@@ -134,33 +131,31 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext *ctx,
-            const string &matrix_rspecifier,
-            const string &vector_rspecifier,
-            const string &int_vector_rspecifier,
-            int64 buffer_size,
-            int64 delta_order,
-            bool norm_means,
-            bool norm_vars,
-            const string &global_cmvn_file,
-            int64 left_context,
-            int64 right_context,
-            int64 num_downsample,
-            int64 offset,
-            const string &mode
-    )
-        :
-        GraphDatasetBase(ctx),
-        matrix_rspecifier_(matrix_rspecifier),
-        vector_rspecifier_(vector_rspecifier),
-        int_vector_rspecifier_(int_vector_rspecifier),
-        delta_opts_(delta_order),
-        norm_means_(norm_means), norm_vars_(norm_vars),
-        left_context_(left_context), right_context_(right_context),
-        num_downsample_(num_downsample), offset_(offset),
-        mode_(mode) {
+    explicit Dataset(OpKernelContext *ctx,
+                     const string &matrix_rspecifier,
+                     const string &vector_rspecifier,
+                     const string &int_vector_rspecifier,
+                     int64 buffer_size,
+                     int64 delta_order,
+                     bool norm_means,
+                     bool norm_vars,
+                     const string &global_cmvn_file,
+                     int64 left_context,
+                     int64 right_context,
+                     int64 num_downsample,
+                     int64 offset,
+                     const string &mode)
+        : DatasetBase(DatasetContext(ctx)),
+          matrix_rspecifier_(std::move(matrix_rspecifier)),
+          vector_rspecifier_(std::move(vector_rspecifier)),
+          int_vector_rspecifier_(std::move(int_vector_rspecifier)),
+          delta_opts_(delta_order),
+          norm_means_(norm_means), norm_vars_(norm_vars),
+          left_context_(left_context), right_context_(right_context),
+          num_downsample_(num_downsample), offset_(offset),
+          mode_(mode) {
       // cmvn
       if (!global_cmvn_file.empty() && (norm_means || norm_vars)) {
         bool binary;
@@ -180,32 +175,32 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
     // Dataset elements can have a fixed number of components of different
     // types and shapes; replace the following two methods to customize this
     // aspect of the dataset.
-    const DataTypeVector &output_dtypes() const override {
+    const DataTypeVector& output_dtypes() const override {
       bool with_matrix = !matrix_rspecifier_.empty(),
-           with_vector = !vector_rspecifier_.empty(),
-           with_int_vec = !int_vector_rspecifier_.empty();
+          with_vector = !vector_rspecifier_.empty(),
+          with_int_vec = !int_vector_rspecifier_.empty();
 
       if (!with_matrix && !with_vector && with_int_vec) {
         static auto *const dtypes = new DataTypeVector({DT_STRING, DT_INT32}); // utt, int_vec
         return *dtypes;
       } else if ((!with_matrix && with_vector && !with_int_vec) ||
-                 (with_matrix && !with_vector && !with_int_vec)) {
-        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT});
+          (with_matrix && !with_vector && !with_int_vec)) {
+        static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_FLOAT});
         return *dtypes;
       } else if ((!with_matrix && with_vector && with_int_vec) ||
-                 (with_matrix && !with_vector && with_int_vec)) {
-        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_INT32});
+          (with_matrix && !with_vector && with_int_vec)) {
+        static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_INT32});
         return *dtypes;
       } else if (with_matrix && with_vector && !with_int_vec) {
-        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT});
+        static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT});
         return *dtypes;
       } else if (with_matrix && with_vector && with_int_vec) {
-        static auto *const dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT, DT_INT32});
+        static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_FLOAT, DT_FLOAT, DT_INT32});
         return *dtypes;
       }
     }
 
-    const std::vector<PartialTensorShape> &output_shapes() const override {
+    const std::vector<PartialTensorShape>& output_shapes() const override {
       int num_out_shapes = 1;
       if (!matrix_rspecifier_.empty())
         ++num_out_shapes;
@@ -232,11 +227,12 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
     //
     // Implement this method if you want to be able to save and restore
     // instances of this dataset (and any iterators over it).
-    Status AsGraphDefInternal(DatasetGraphDefBuilder *b,
-                              Node **output) const override {
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
       // Construct nodes to represent any of the input tensors from this
       // object's member variables using `b->AddScalar()` and `b->AddVector()`.
-      Node *matrix_rspecifier = nullptr, *vector_rspecifier = nullptr, *int_vector_rspecifier = nullptr;
+      Node* matrix_rspecifier = nullptr, *vector_rspecifier = nullptr, *int_vector_rspecifier = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(matrix_rspecifier_, &matrix_rspecifier));
       TF_RETURN_IF_ERROR(b->AddScalar(vector_rspecifier_, &vector_rspecifier));
       TF_RETURN_IF_ERROR(b->AddScalar(int_vector_rspecifier_, &int_vector_rspecifier));
@@ -381,7 +377,7 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params &params)
+      explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {
         if (!dataset()->matrix_rspecifier_.empty()) {
           matrix_reader_.reset(
@@ -589,29 +585,29 @@ class KaldiReaderDatasetOp : public DatasetOpKernel {
      private:
       // Sets up reader streams to read from the file at `current_key_index_`.
       Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        for (size_t i = 0; i <= current_key_index_; ++i) {
-          if (matrix_reader_)
-            matrix_reader_->Next();
-          if (vector_reader_)
-            vector_reader_->Next();
-          if (int_vec_reader_)
-            int_vec_reader_->Next();
-        }
+          for (size_t i = 0; i <= current_key_index_; ++i) {
+            if (matrix_reader_)
+              matrix_reader_->Next();
+            if (vector_reader_)
+              vector_reader_->Next();
+            if (int_vec_reader_)
+              int_vec_reader_->Next();
+          }
 
-        if (current_key_ != matrix_reader_->Key()) {
-          return  errors::InvalidArgument(
-              "current_key_index_:", current_key_index_,
-              " is not matched with current_key:", current_key_,
-              ", something must be wrong(input changed?).");
-        }
+          if (current_key_ != matrix_reader_->Key()) {
+            return  errors::InvalidArgument(
+                "current_key_index_:", current_key_index_,
+                " is not matched with current_key:", current_key_,
+                ", something must be wrong(input changed?).");
+          }
 
-        return Status::OK();
+          return Status::OK();
       }
 
       void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        matrix_reader_.reset();
-        vector_reader_.reset();
-        int_vec_reader_.reset();
+          matrix_reader_.reset();
+          vector_reader_.reset();
+          int_vec_reader_.reset();
       }
 
       mutex mu_;
@@ -666,41 +662,42 @@ REGISTER_OP("KaldiReaderDataset")
     .Input("mode: string")
     .Output("handle: variant")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
-        // stateful to inhibit constant folding.
+    // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle unused;
-      // `matrix_rspecifier` must be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      // `vector_rspecifier` must be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      // `int_vector_rspecifier` must be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      // `buffer_size` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      // `delta_order` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      // `norm_means` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-      // `norm_vars` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
-      // `global_cmvn_file` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
-      // `left_context` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
-      // `right_context` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(9), 0, &unused));
-      // `num_downsample` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(10), 0, &unused));
-      // `offset` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(11), 0, &unused));
-      // `mode` could only be a scalar.
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(12), 0, &unused));
-      return shape_inference::ScalarShape(c);
-    });
+    shape_inference::ShapeHandle unused;
+    // `matrix_rspecifier` must be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+    // `vector_rspecifier` must be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+    // `int_vector_rspecifier` must be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+    // `buffer_size` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+    // `delta_order` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+    // `norm_means` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+    // `norm_vars` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+    // `global_cmvn_file` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+    // `left_context` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+    // `right_context` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(9), 0, &unused));
+    // `num_downsample` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(10), 0, &unused));
+    // `offset` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(11), 0, &unused));
+    // `mode` could only be a scalar.
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(12), 0, &unused));
+    return shape_inference::ScalarShape(c);
+  });
 
 // Register the kernel implementation for KaldiReaderDataset.
 REGISTER_KERNEL_BUILDER(Name("KaldiReaderDataset").Device(DEVICE_CPU),
-                        KaldiReaderDatasetOp);
+    KaldiReaderDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace KaldiIO

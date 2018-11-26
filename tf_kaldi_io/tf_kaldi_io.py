@@ -70,6 +70,9 @@ class KaldiReaderDataset(tf.data.Dataset):
       self._left_context, self._right_context, self._num_downsample, self._offset,
       self._mode)
 
+  def _inputs(self):
+    return []
+
   @property
   def output_types(self):
     if self._readers_idx == [0, 0, 1]:
