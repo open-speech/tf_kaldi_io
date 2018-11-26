@@ -117,7 +117,7 @@ There are two python readers:
     ```
 - or install from pypi (which is the master branch)
     ```bash
-    pip install tf_kaldi_io
+    pip --no-cache-dir install tf_kaldi_io
     ```
 
 ### 3. test
